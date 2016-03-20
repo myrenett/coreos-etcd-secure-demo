@@ -1,0 +1,84 @@
+#cloud-config
+
+hostname: ${hostname}
+coreos:
+  fleet:
+    public_ip: $public_ipv4
+    metadata: "${metadata}"
+
+    # Client auth certs.
+    etcd_cafile:   /etc/ssl/etcd/certs/ca.crt
+    etcd_certfile: /etc/ssl/etcd/certs/client.host.crt
+    etcd_server:   https://$public_ipv4:2379
+
+  locksmith:
+      public_ip: $public_ipv4
+
+      # Client auth certs.
+      etcd_ca_file:   /etc/ssl/etcd/certs/ca.crt
+      etcd_cert_file: /etc/ssl/etcd/certs/client.host.crt
+      etcd_server:    https://$public_ipv4:2379
+
+  flannel:
+      public_ip: $public_ipv4
+
+      # Client auth certs.
+      etcd_ca_file:   /etc/ssl/etcd/certs/ca.crt
+      etcd_cert_file: /etc/ssl/etcd/certs/client.host.crt
+      etcd_endpoints:    https://$public_ipv4:2379
+
+  etcd2:
+    discovery: ${discovery_token}
+
+    advertise-client-urls: https://$public_ipv4:2379
+    listen-client-urls:    https://0.0.0.0:2379
+    listen-peer-urls:      https://$public_ipv4:2380
+
+    # Client auth certs.
+    client-cert-auth:      true
+    trusted-ca-file:       /etc/ssl/etcd/certs/ca.crt
+    cert-file:             /etc/ssl/etcd/certs/client.host.crt
+    key-file:              /etc/ssl/etcd/private/client.key
+
+    # Peer to peer auth certs.
+    peer-client-cert-auth: true
+    peer-trusted-ca-file:  /etc/ssl/etcd/certs/ca.crt
+    peer-cert-file:        /etc/ssl/etcd/certs/client.host.crt
+    peer-key-file:         /etc/ssl/etcd/private/client.key
+
+  units:
+  - name: etcd2.service
+    mask: true
+
+  - name: fleet.service
+    command: start
+
+  - name: flanneld.service
+    drop-ins:
+    - name: 50-network-config.conf
+      content: |
+        [Service]
+        ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16" }'
+
+write_files:
+  - path: /etc/profile.d/etcdctl.sh
+    permissions: 0644
+    owner: core
+    content: |
+      # configure etcdctl to work with our etcd servers set above
+      export ETCDCTL_CERT_FILE=/etc/ssl/etcd/certs/client.host.crt
+      export ETCDCTL_KEY_FILE=/etc/ssl/etcd/private/client.key
+      export ETCDCTL_CA_FILE=/etc/ssl/etcd/certs/ca.crt
+      # Replace with etcd1 server ip
+      export ETCDCTL_PEERS="https://my_etcd_server_ip:2379"
+  - path: /etc/profile.d/fleetctl.sh
+    permissions: 0644
+    owner: core
+    content: |
+      # configure fleetctl to work with our etcd servers set above
+      export FLEETCTL_CERT_FILE=/etc/ssl/etcd/certs/client.host.crt
+      export FLEETCTL_KEY_FILE=/etc/ssl/etcd/private/client.key
+      export FLEETCTL_CA_FILE=/etc/ssl/etcd/certs/ca.crt
+      # Replace with etcd1 server ip
+      export FLEETCTL_ENDPOINT="https://my_etcd_server_ip:2379"
+      export FLEETCTL_EXPERIMENTAL_API=true
